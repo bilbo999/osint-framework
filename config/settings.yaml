@@ -1,0 +1,76 @@
+# Non-sensitive application settings. Validated by app.core.config.SettingsConfig.
+# Secrets (DB passwords, API keys, encryption keys) live ONLY in environment variables (.env).
+
+app:
+  name: OSINT Framework
+  environment: development          # development | test | production
+  api_prefix: /api/v1
+  cors_origins:
+    - http://localhost:5173
+
+logging:
+  level: INFO                       # DEBUG | INFO | WARNING | ERROR
+  format: json                      # json | console
+  # Keys whose values are replaced by "[REDACTED]" in every log record (substring match).
+  redact_keys: [password, passwd, secret, token, api_key, apikey, authorization, cookie, set-cookie]
+
+execution:
+  backend: arq                      # arq (Redis worker) | inline (tests, CLI --local)
+  max_concurrent_collectors: 8      # global asyncio semaphore per investigation
+  investigation_timeout_seconds: 900
+  max_pivot_depth: 1                # 0 = never create child targets from findings
+  pivot_finding_types: [domain, email, username, ip_address]
+  max_findings_per_collector: 5000  # hard cap; extra findings are dropped with a warning
+  progress_poll_interval_seconds: 2
+
+security:
+  session_cookie_name: osint_session
+  session_idle_timeout_minutes: 480
+  session_absolute_timeout_hours: 24
+  csrf_header_name: X-CSRF-Token
+  password_min_length: 12
+  api_rate_limit_per_minute: 120
+  login_rate_limit_per_minute: 10
+  api_token_prefix: osk_
+
+http:
+  # Generic client identification: never include personal data or contact details.
+  user_agent: "osint-framework/0.1 (public-source research tool)"
+  connect_timeout_seconds: 5
+  verify_tls: true
+  max_response_bytes: 5242880       # 5 MiB
+
+evidence:
+  max_content_bytes: 1048576        # larger payloads are truncated and flagged
+  store_raw_content: true
+
+entity_resolution:
+  # Exact match on normalized_value merges these types into one entity.
+  auto_merge_entity_types: [domain, subdomain, ip_address, email, url, phone, certificate, autonomous_system]
+  # These are only ever LINKED (POSSIBLY_SAME_AS, CORRELATED), never merged automatically.
+  never_auto_merge_entity_types: [person, organization, username]
+  similarity_algorithm: jaro_winkler
+  feature_weights:                  # must sum to 1.0
+    string_similarity: 0.50
+    shared_context: 0.20            # co-occurrence in the same evidence / target
+    source_diversity: 0.15          # number of independent sources
+    cross_reference: 0.15           # e.g. email local-part == username
+  link_threshold: 0.75              # >= creates POSSIBLY_SAME_AS relationship
+  review_threshold: 0.50            # [review, link) stored as hidden candidate; below discarded
+  max_candidates_per_entity: 50
+
+graph:
+  max_expand_depth: 3
+  max_nodes_returned: 2000
+  default_min_confidence: 0.0
+  outbox_batch_size: 500
+
+reports:
+  formats: [html, json, csv, pdf]
+  include_raw_evidence: false
+  output_dir: var/reports
+
+demo:
+  enabled: false                    # OSINT_DEMO_MODE=true overrides
+  dataset_dir: app/demo/data        # relative to backend/
+  banner: "DEMO / SYNTHETIC DATA"

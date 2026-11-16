@@ -1,0 +1,132 @@
+[project]
+name = "osint-framework"
+version = "0.1.0"
+description = "Modular OSINT framework for digital exposure analysis (public sources only)."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "OSINT Framework contributors" }]
+dependencies = [
+    # API / core
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0.2",
+    "structlog>=24.4",
+    "prometheus-client>=0.21",
+    # Persistence
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "neo4j>=5.26",
+    # Async execution
+    "redis>=5.2",
+    "arq>=0.26",
+    # Collectors
+    "httpx>=0.28",
+    "dnspython>=2.7",
+    "email-validator>=2.2",
+    "phonenumbers>=8.13",
+    "tldextract>=5.1",
+    # Analysis
+    "rapidfuzz>=3.10",
+    # Security
+    "argon2-cffi>=23.1",
+    "cryptography>=43.0",
+    # Reports / CLI
+    "jinja2>=3.1",
+    "typer>=0.15",
+]
+
+[project.optional-dependencies]
+# WeasyPrint needs system libraries (Pango). Installed in the Docker image; optional locally.
+pdf = ["weasyprint>=63.0"]
+
+[project.scripts]
+osint = "app.cli.main:app"
+
+[project.entry-points."osint_framework.collectors"]
+# Third-party packages may register collectors here, e.g.:
+# my_collector = "my_package.collectors:MyCollector"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "respx>=0.21",
+    "aiosqlite>=0.20",
+    "ruff>=0.8",
+    "black>=24.10",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# --------------------------------------------------------------------------- quality
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["."]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F",   # pycodestyle / pyflakes
+    "I",             # isort
+    "B",             # bugbear
+    "UP",            # pyupgrade
+    "N",             # naming
+    "S",             # bandit (security)
+    "ASYNC",         # async pitfalls
+    "SIM",           # simplifications
+    "PT",            # pytest style
+    "RUF",           # ruff-specific
+]
+ignore = [
+    "E501",          # line length is enforced by Black
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "tests"]
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["arq.*", "tldextract.*", "phonenumbers.*", "weasyprint.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# --------------------------------------------------------------------------- tests
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: needs real PostgreSQL/Neo4j/Redis (skipped unless OSINT_TEST_* URLs are set)",
+    "e2e: full pipeline scenario",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true

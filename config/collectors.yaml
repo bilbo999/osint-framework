@@ -1,0 +1,96 @@
+# Collector discovery and per-collector configuration.
+# Validated by app.core.config.CollectorsConfig. Adding a collector never requires
+# touching the core: drop it in a discovered package/path and (optionally) configure it here.
+#
+# API keys are NOT configured here. Each collector declares `api_key_env` (an environment
+# variable name, see .env.example). Collectors that need a missing key are SKIPPED.
+
+discovery:
+  packages: [app.collectors.builtin]  # every concrete Collector subclass inside is registered
+  modules: []                         # extra importable modules, e.g. my_pkg.my_collector
+  plugin_paths: [collectors]          # directories (relative to repo root) with *.py plugins
+  entry_points: true                  # also load the "osint_framework.collectors" entry points
+  entry_point_group: osint_framework.collectors
+
+defaults:
+  enabled: true
+  timeout_seconds: 15
+  provisional_confidence: 0.5         # placeholder until Phase 7 recomputes confidence
+  retry:
+    max_attempts: 3
+    backoff_base_seconds: 0.5
+    backoff_max_seconds: 10
+    jitter: 0.5
+    retry_on_status: [429, 500, 502, 503, 504]
+  circuit_breaker:
+    failure_threshold: 5
+    recovery_timeout_seconds: 60
+    half_open_max_calls: 1
+  options: {}
+
+# Per-collector overrides. Names must match Collector.name. Unknown names are reported as
+# warnings by the registry (config may be ahead of code). `rate_limit` overrides the
+# collector's declared default.
+collectors:
+  # ---- Phase 4a: domain
+  dns_records:
+    timeout_seconds: 10
+    rate_limit: { requests: 20, per_seconds: 1 }
+    options:
+      record_types: [A, AAAA, CNAME, MX, NS, TXT]
+      nameservers: []                 # empty = system resolver
+  mail_security:                      # SPF + DMARC
+    rate_limit: { requests: 20, per_seconds: 1 }
+  rdap_domain:
+    rate_limit: { requests: 1, per_seconds: 1 }
+    options:
+      bootstrap_url: https://data.iana.org/rdap/dns.json
+  tls_certificate:
+    timeout_seconds: 10
+    rate_limit: { requests: 5, per_seconds: 1 }
+    options:
+      port: 443
+  crtsh:                              # certificate transparency + subdomains
+    timeout_seconds: 30
+    rate_limit: { requests: 1, per_seconds: 5 }
+    retry: { max_attempts: 2 }
+    options:
+      exclude_expired: false
+      max_results: 2000
+
+  # ---- Phase 4b: IP
+  reverse_dns:
+    rate_limit: { requests: 20, per_seconds: 1 }
+  rdap_ip:
+    rate_limit: { requests: 1, per_seconds: 1 }
+    options:
+      bootstrap_url: https://data.iana.org/rdap/ipv4.json
+      bootstrap_url_v6: https://data.iana.org/rdap/ipv6.json
+  cymru_asn:                          # Team Cymru IP-to-ASN via DNS
+    rate_limit: { requests: 5, per_seconds: 1 }
+  geoip_maxmind:                      # local GeoLite2 database; disabled unless provided
+    enabled: false
+    options:
+      database_path: var/geoip/GeoLite2-City.mmdb
+
+  # ---- Phase 4b: email / username / url / phone / person
+  email_basics:                       # syntax, domain, MX (offline + DNS)
+    rate_limit: { requests: 20, per_seconds: 1 }
+  gravatar:
+    rate_limit: { requests: 5, per_seconds: 1 }
+  hibp_breaches:                      # requires OSINT_HIBP_API_KEY; mock used in demo/tests
+    rate_limit: { requests: 10, per_seconds: 60 }
+    options:
+      truncate_response: true
+  # Username presence: one collector per provider with a documented public API.
+  username_github:                    # optional OSINT_GITHUB_TOKEN raises the quota
+    rate_limit: { requests: 60, per_seconds: 3600 }
+  username_gitlab:
+    rate_limit: { requests: 1, per_seconds: 2 }
+  url_analysis:
+    rate_limit: { requests: 10, per_seconds: 1 }
+  http_technologies:                  # single GET of a user-supplied URL; off by default
+    enabled: false
+    rate_limit: { requests: 1, per_seconds: 1 }
+  phone_basics: {}                    # offline (phonenumbers)
+  seed_pivot: {}                      # person/organization seeds -> derived targets

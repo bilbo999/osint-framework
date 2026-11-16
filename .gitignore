@@ -1,0 +1,37 @@
+# --- secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# --- runtime data (never commit evidence, reports or third-party databases)
+var/
+backend/var/
+*.mmdb
+*.log
+
+# --- editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

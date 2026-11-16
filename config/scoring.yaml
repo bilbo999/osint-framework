@@ -1,0 +1,158 @@
+# Confidence and Exposure Score configuration. Validated by app.core.config.ScoringConfig.
+# Changing this file changes scores WITHOUT code changes. Its sha256 is stored with every
+# computed Score so results stay reproducible. Formulas: docs/architecture.md (ADR-007/008).
+version: 1
+
+# ----------------------------------------------------------------------------- confidence
+# confidence = min(provenance_cap, sum(weight_i * factor_i)), each factor in [0, 1]
+confidence:
+  weights:                          # must sum to 1.0
+    source_reliability: 0.30
+    evidence_quality: 0.20
+    entity_match: 0.20
+    corroboration: 0.20
+    freshness: 0.10
+  provenance_caps:                  # an inference can never look as solid as an observation
+    OBSERVED: 1.00
+    DERIVED: 0.95
+    CORRELATED: 0.80
+    INFERRED: 0.60
+  source_reliability:               # keys = Source.name
+    default: 0.60
+    dns: 0.90
+    rdap: 0.90
+    tls: 0.95
+    crtsh: 0.85
+    team_cymru: 0.85
+    maxmind_geolite2: 0.60
+    gravatar: 0.80
+    hibp: 0.90
+    github_api: 0.85
+    gitlab_api: 0.85
+    http_public: 0.70
+    local_parser: 1.00
+    synthetic: 0.50
+  evidence_quality:                 # keys = EvidenceKind value, or "none"
+    default: 0.50
+    none: 0.30
+    dns_response: 0.90
+    rdap_response: 0.90
+    http_response: 0.75
+    api_response: 0.90
+    tls_certificate: 1.00
+    ct_log_entry: 0.90
+    computed: 0.80
+    synthetic: 0.50
+  corroboration:
+    saturation_sources: 3           # factor = min(1, independent_sources / saturation)
+  freshness:                        # factor = 0.5 ** (age_days / half_life_days)
+    default_half_life_days: 180
+    half_life_days:
+      ip_address: 30
+      reverse_dns: 30
+      mx_record: 90
+      ns_record: 90
+      txt_record: 90
+      geolocation: 60
+      account_presence: 120
+      certificate: 365
+      domain_registration: 365
+      breach_exposure: 3650
+
+# ------------------------------------------------------------------------- exposure score
+# contribution = points * finding.confidence * provenance_multiplier
+# category_score = min(max_points, sum of the top `max_occurrences` contributions per rule)
+# total = sum(category_score)   (max_points of the 7 categories must sum to total_max)
+exposure:
+  total_max: 100
+  min_confidence: 0.20              # findings below this confidence never contribute
+  provenance_multipliers:
+    OBSERVED: 1.0
+    DERIVED: 0.9
+    CORRELATED: 0.6
+    INFERRED: 0.4
+  categories:
+    identity:
+      label: Identity Exposure
+      description: Information that identifies who the subject is.
+      max_points: 20
+      rules:
+        - { id: identity.person_name, finding_types: [person_name], points: 6, max_occurrences: 1,
+            explanation: "A real name is publicly associated with the target." }
+        - { id: identity.gravatar_profile, finding_types: [gravatar_profile], points: 6, max_occurrences: 1,
+            explanation: "A public Gravatar profile exposes identity details." }
+        - { id: identity.registration_contact, finding_types: [domain_registration], points: 4, max_occurrences: 2,
+            metadata_equals: { registrant_redacted: false },
+            explanation: "Domain registration data shows non-redacted registrant information." }
+        - { id: identity.organization, finding_types: [organization], points: 4, max_occurrences: 1,
+            explanation: "An organization is publicly linked to the target." }
+    contact:
+      label: Contact Exposure
+      description: Ways to reach the subject directly.
+      max_points: 15
+      rules:
+        - { id: contact.email, finding_types: [email], points: 4, max_occurrences: 3,
+            explanation: "Email addresses are publicly discoverable." }
+        - { id: contact.phone, finding_types: [phone], points: 6, max_occurrences: 2,
+            explanation: "Phone numbers are publicly discoverable." }
+    credential:
+      label: Credential Exposure
+      description: Presence in publicly reported data breaches (no credentials are retrieved).
+      max_points: 25
+      rules:
+        - { id: credential.breach, finding_types: [breach_exposure], points: 8, max_occurrences: 4,
+            explanation: "The account appears in a publicly reported breach." }
+    social:
+      label: Social Exposure
+      description: Public accounts and profiles on online services.
+      max_points: 15
+      rules:
+        - { id: social.account, finding_types: [account_presence], points: 3, max_occurrences: 5,
+            explanation: "A public account with this username exists." }
+    infrastructure:
+      label: Infrastructure Exposure
+      description: Publicly visible technical surface.
+      max_points: 10
+      rules:
+        - { id: infrastructure.subdomain, finding_types: [subdomain], points: 0.5, max_occurrences: 10,
+            explanation: "Subdomains are publicly enumerable." }
+        - { id: infrastructure.ip_address, finding_types: [ip_address], points: 1, max_occurrences: 3,
+            explanation: "Public IP addresses are associated with the target." }
+        - { id: infrastructure.technology, finding_types: [technology], points: 1, max_occurrences: 3,
+            explanation: "Software/technology versions are disclosed publicly." }
+        - { id: infrastructure.no_dmarc, finding_types: [dmarc_policy], points: 2, max_occurrences: 1,
+            metadata_equals: { policy: none },
+            explanation: "DMARC policy is 'none': the domain is easier to spoof." }
+    historical:
+      label: Historical Exposure
+      description: Past data that remains publicly available.
+      max_points: 10
+      rules:
+        - { id: historical.expired_certificate, finding_types: [certificate], points: 1, max_occurrences: 5,
+            metadata_equals: { expired: true },
+            explanation: "Historical certificates in CT logs reveal past infrastructure." }
+        - { id: historical.old_breach, finding_types: [breach_exposure], points: 1, max_occurrences: 5,
+            metadata_equals: { older_than_5_years: true },
+            explanation: "Old breach records remain publicly listed." }
+    correlation:
+      label: Correlation Exposure
+      description: How easily separate identifiers can be linked together.
+      max_points: 5
+      rules:
+        - { id: correlation.possible_same_entity, kind: relationship,
+            relationship_types: [POSSIBLY_SAME_AS], points: 1, max_occurrences: 5,
+            explanation: "Separate identifiers can be linked as possibly the same entity." }
+
+# --------------------------------------------------------------------------- severity
+severity:
+  default: info
+  by_finding_type:
+    breach_exposure: high
+    phone: medium
+    email: medium
+    person_name: medium
+    gravatar_profile: low
+    account_presence: low
+    domain_registration: low
+    technology: low
+    dmarc_policy: low
