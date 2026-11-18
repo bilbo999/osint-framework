@@ -60,4 +60,5 @@ docker compose up --build                  # entorno completo (a partir de la Fa
 6. Commit: `Fase N: <título>` (p. ej. `Fase 4a: normalizadores y collectors de dominio`).
 
 ## Estado
-- Fase 1 (arquitectura y contratos): completada. Siguiente: `docs/phases/phase-02.md`.
+- Fase 1 (arquitectura y contratos): completada.
+- Fase 2 (backend + modelos + PostgreSQL): completada. Siguiente: `docs/phases/phase-03.md`.

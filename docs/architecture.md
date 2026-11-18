@@ -114,6 +114,24 @@ repositorios sobre SQLite; integración (`-m integration`) contra servicios real
 `OSINT_TEST_*`, saltados si faltan; un e2e del pipeline completo en modo inline + demo. Cobertura
 backend ≥ 80 % desde la Fase 12. *Descartado:* testcontainers obligatorio (exige Docker siempre).
 
+**ADR-015 — Detalles de persistencia de la Fase 2.** Desviaciones/precisiones sobre phase-02.md:
+(1) `app/domain/records.py` añade los registros persistidos fuera del contrato de collectors
+(`Investigation`, `CollectorRun`, `Entity`, `Relationship`, `Score`, `Report`, `AuditEvent`,
+`OutboxEvent`) para que los repositorios nunca devuelvan objetos ORM; también `repositories/reports.py`
+y `services/errors.py`. (2) `evidence` tiene columna `metadata` (JSON): al truncar a
+`max_content_bytes` se guarda `{"truncated": true, "original_size_bytes", "original_sha256"}` y
+`evidence.sha256` sigue siendo el del contenido original; `evidence_to_domain` reconstruye esas filas
+con `model_construct` (el validador de hash no aplica a un prefijo). (3) Borrado total: todas las FKs a
+`investigations` son `ON DELETE CASCADE`; `audit_log` también cae en cascada y el evento
+`investigation.deleted` se guarda con `investigation_id=NULL`; `graph_outbox.investigation_id` **no** tiene
+FK para que `delete_investigation` sobreviva hasta que Neo4j se limpie. (4) `sources` es un catálogo global
+(PK = `name`) con FK desde `evidence.source` y `findings.source`; `persist()` falla (`MissingSourceError`)
+si un finding referencia una fuente ni aportada ni existente, y (`MissingEvidenceError`) si referencia
+evidencia ni adjunta ni almacenada; todo ocurre en una sola transacción. (5) `naming_convention["uq"]`
+incluye `constraint_name`. (6) `reopen` devuelve a `COMPLETED` si hubo `collector_runs`, si no a `DRAFT`.
+(7) SQLite (tests) activa `PRAGMA foreign_keys=ON` en `create_engine` para que los cascades se prueben.
+(8) La migración `0001` parte de autogenerate revisado a mano; `alembic check` limpio sobre SQLite.
+
 ## Anexo A — Detalles de referencia
 
 ### A.1 Reglas de provenance (impuestas por `app/domain/finding.py`)
